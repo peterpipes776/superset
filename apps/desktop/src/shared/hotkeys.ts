@@ -826,6 +826,13 @@ export const HOTKEYS = {
 		category: "Help",
 	}),
 
+	POWER_USER: defineHotkey({
+		keys: "meta+g",
+		label: "Power User Grid",
+		category: "Workspace",
+		description: "View all workspace terminals in a grid",
+	}),
+
 	// Knowledge Graph
 	KNOWLEDGE_GRAPH: defineHotkey({
 		keys: "meta+shift+k",
