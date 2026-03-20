@@ -1,6 +1,32 @@
+import { useEffect, useRef, useState } from "react";
+import { electronTrpc } from "renderer/lib/electron-trpc";
+
 export function useFixLog(
-	_worktreePath: string | undefined,
-	_isActive: boolean,
+	worktreePath: string | undefined,
+	isActive: boolean,
 ) {
-	return { lines: [] as string[] };
+	const [lines, setLines] = useState<string[]>([]);
+	const subscribed = useRef(false);
+
+	electronTrpc.archOne.streamFixLog.useSubscription(
+		{ worktreePath: worktreePath ?? "" },
+		{
+			enabled: !!worktreePath && isActive && !subscribed.current,
+			onData: (event) => {
+				if (event.type === "reset") {
+					setLines([]);
+				} else if (event.type === "data") {
+					setLines((prev) => [...prev, ...event.data.split("\n")]);
+				}
+			},
+		},
+	);
+
+	useEffect(() => {
+		if (!isActive) {
+			setLines([]);
+		}
+	}, [isActive]);
+
+	return { lines };
 }

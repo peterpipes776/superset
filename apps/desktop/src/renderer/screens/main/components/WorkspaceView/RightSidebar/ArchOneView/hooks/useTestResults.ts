@@ -1,3 +1,13 @@
-export function useTestResults(_worktreePath: string | undefined) {
-	return { data: undefined, isLoading: false };
+import { electronTrpc } from "renderer/lib/electron-trpc";
+
+export function useTestResults(worktreePath: string | undefined) {
+	const { data, isLoading } = electronTrpc.archOne.getTestResults.useQuery(
+		{ worktreePath: worktreePath ?? "" },
+		{
+			enabled: !!worktreePath,
+			refetchInterval: 30_000,
+		},
+	);
+
+	return { data, isLoading };
 }

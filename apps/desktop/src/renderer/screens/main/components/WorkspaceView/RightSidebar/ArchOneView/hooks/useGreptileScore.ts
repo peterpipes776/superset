@@ -1,12 +1,29 @@
-const noop = () => {};
+import { electronTrpc } from "renderer/lib/electron-trpc";
 
 export function useGreptileScore(
-	_worktreePath: string | undefined,
-	_pollInterval: number,
+	worktreePath: string | undefined,
+	pollInterval: number,
 ) {
-	return { data: undefined, isLoading: false, refetch: noop };
+	const { data, isLoading, refetch } =
+		electronTrpc.archOne.getGreptileScore.useQuery(
+			{ worktreePath: worktreePath ?? "" },
+			{
+				enabled: !!worktreePath,
+				refetchInterval: pollInterval,
+			},
+		);
+
+	return { data, isLoading, refetch };
 }
 
-export function useFixStatus(_worktreePath: string | undefined) {
-	return { data: undefined };
+export function useFixStatus(worktreePath: string | undefined) {
+	const { data } = electronTrpc.archOne.getFixStatus.useQuery(
+		{ worktreePath: worktreePath ?? "" },
+		{
+			enabled: !!worktreePath,
+			refetchInterval: 3_000,
+		},
+	);
+
+	return { data };
 }
