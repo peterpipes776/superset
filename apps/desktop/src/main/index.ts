@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { settings } from "@superset/local-db";
@@ -264,6 +265,15 @@ protocol.registerSchemesAsPrivileged([
 			supportFetchAPI: true,
 		},
 	},
+	{
+		scheme: "superset-kg",
+		privileges: {
+			standard: true,
+			secure: true,
+			bypassCSP: true,
+			supportFetchAPI: true,
+		},
+	},
 ]);
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -329,6 +339,91 @@ if (!gotTheLock) {
 				.fromPartition("persist:superset")
 				.protocol.handle("superset-font", fontProtocolHandler);
 		}
+
+		// Serve the Understand-Anything knowledge graph dashboard via superset-kg://
+		// URL format: superset-kg://<encodedWorktreePath>/path
+		// - /knowledge-graph.json → reads from <worktreePath>/.understand-anything/knowledge-graph.json
+		// - all other paths → serves from bundled dashboard static files
+		const getDashboardDir = (): string => {
+			const isDev = process.env.NODE_ENV === "development";
+			if (isDev) {
+				return path.join(
+					app.getAppPath(),
+					"src/resources/understand-anything-dashboard",
+				);
+			}
+			const previewPath = path.join(
+				__dirname,
+				"../resources/understand-anything-dashboard",
+			);
+			if (existsSync(previewPath)) return previewPath;
+			return path.join(
+				app.getAppPath(),
+				"resources/understand-anything-dashboard",
+			);
+		};
+
+		const MIME_TYPES: Record<string, string> = {
+			".html": "text/html",
+			".js": "application/javascript",
+			".css": "text/css",
+			".json": "application/json",
+			".svg": "image/svg+xml",
+			".png": "image/png",
+			".ico": "image/x-icon",
+			".woff": "font/woff",
+			".woff2": "font/woff2",
+		};
+
+		const kgProtocolHandler = async (request: Request) => {
+			const url = new URL(request.url);
+			const worktreePath = decodeURIComponent(url.hostname);
+			const pathname = url.pathname || "/";
+
+			if (pathname === "/knowledge-graph.json") {
+				const graphPath = path.join(
+					worktreePath,
+					".understand-anything",
+					"knowledge-graph.json",
+				);
+				if (!existsSync(graphPath)) {
+					return new Response("Not found", { status: 404 });
+				}
+				return net.fetch(pathToFileURL(graphPath).toString());
+			}
+
+			const dashboardDir = getDashboardDir();
+			const filePath =
+				pathname === "/" || pathname === ""
+					? path.join(dashboardDir, "index.html")
+					: path.join(dashboardDir, pathname);
+
+			if (!filePath.startsWith(dashboardDir)) {
+				return new Response("Forbidden", { status: 403 });
+			}
+
+			if (!existsSync(filePath)) {
+				const indexPath = path.join(dashboardDir, "index.html");
+				if (existsSync(indexPath)) {
+					return net.fetch(pathToFileURL(indexPath).toString());
+				}
+				return new Response("Not found", { status: 404 });
+			}
+
+			const ext = path.extname(filePath).toLowerCase();
+			const contentType = MIME_TYPES[ext] || "application/octet-stream";
+			const response = await net.fetch(
+				pathToFileURL(filePath).toString(),
+			);
+			return new Response(response.body, {
+				status: response.status,
+				headers: { "Content-Type": contentType },
+			});
+		};
+		protocol.handle("superset-kg", kgProtocolHandler);
+		session
+			.fromPartition("persist:superset")
+			.protocol.handle("superset-kg", kgProtocolHandler);
 
 		ensureProjectIconsDir();
 		setWorkspaceDockIcon();

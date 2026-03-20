@@ -223,6 +223,17 @@ function WorkspacePage() {
 		workspaceId,
 		addBrowserTab,
 	]);
+	useAppHotkey(
+		"KNOWLEDGE_GRAPH",
+		() => {
+			if (workspace?.worktreePath) {
+				const encodedPath = encodeURIComponent(workspace.worktreePath);
+				addBrowserTab(workspaceId, `superset-kg://${encodedPath}/index.html`);
+			}
+		},
+		undefined,
+		[workspaceId, workspace?.worktreePath, addBrowserTab],
+	);
 	usePresetHotkeys(openTabWithPreset);
 
 	useAppHotkey("RUN_WORKSPACE_COMMAND", () => toggleWorkspaceRun(), undefined, [

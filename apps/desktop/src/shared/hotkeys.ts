@@ -825,6 +825,15 @@ export const HOTKEYS = {
 		label: "Show Keyboard Shortcuts",
 		category: "Help",
 	}),
+
+	// Knowledge Graph
+	KNOWLEDGE_GRAPH: defineHotkey({
+		keys: "meta+shift+k",
+		label: "Knowledge Graph",
+		category: "Workspace",
+		description:
+			"Open the knowledge graph dashboard for the current workspace",
+	}),
 } as const satisfies Record<string, HotkeyDefinition>;
 
 export function getVisibleHotkeys(): HotkeyId[] {

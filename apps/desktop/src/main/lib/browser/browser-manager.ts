@@ -10,7 +10,11 @@ interface ConsoleEntry {
 const MAX_CONSOLE_ENTRIES = 500;
 
 function sanitizeUrl(url: string): string {
-	if (/^https?:\/\//i.test(url) || url.startsWith("about:")) {
+	if (
+		/^https?:\/\//i.test(url) ||
+		url.startsWith("about:") ||
+		/^superset-\w+:\/\//i.test(url)
+	) {
 		return url;
 	}
 	if (url.startsWith("localhost") || url.startsWith("127.0.0.1")) {
