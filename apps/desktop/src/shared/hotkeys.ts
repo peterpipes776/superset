@@ -838,8 +838,7 @@ export const HOTKEYS = {
 		keys: "meta+shift+k",
 		label: "Knowledge Graph",
 		category: "Workspace",
-		description:
-			"Open the knowledge graph dashboard for the current workspace",
+		description: "Open the knowledge graph dashboard for the current workspace",
 	}),
 } as const satisfies Record<string, HotkeyDefinition>;
 

@@ -412,9 +412,7 @@ if (!gotTheLock) {
 
 			const ext = path.extname(filePath).toLowerCase();
 			const contentType = MIME_TYPES[ext] || "application/octet-stream";
-			const response = await net.fetch(
-				pathToFileURL(filePath).toString(),
-			);
+			const response = await net.fetch(pathToFileURL(filePath).toString());
 			return new Response(response.body, {
 				status: response.status,
 				headers: { "Content-Type": contentType },
