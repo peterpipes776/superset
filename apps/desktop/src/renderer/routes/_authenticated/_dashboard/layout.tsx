@@ -7,8 +7,8 @@ import {
 } from "@tanstack/react-router";
 import { useFeatureFlagEnabled } from "posthog-js/react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import { DashboardSidebar } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar";
 import { ResizablePanel } from "renderer/screens/main/components/ResizablePanel";
+import { V2WorkspaceSidebar } from "renderer/screens/main/components/V2WorkspaceSidebar";
 import { WorkspaceSidebar } from "renderer/screens/main/components/WorkspaceSidebar";
 import { useAppHotkey } from "renderer/stores/hotkeys";
 import { useOpenNewWorkspaceModal } from "renderer/stores/new-workspace-modal";
@@ -93,6 +93,10 @@ function DashboardLayout() {
 		[openNewWorkspaceModal, currentWorkspace?.projectId],
 	);
 
+	useAppHotkey("POWER_USER", () => navigate({ to: "/power-user" }), undefined, [
+		navigate,
+	]);
+
 	return (
 		<div className="flex flex-col h-full w-full">
 			<TopBar />
@@ -112,7 +116,7 @@ function DashboardLayout() {
 						}
 					>
 						{isV2CloudEnabled ? (
-							<DashboardSidebar isCollapsed={isWorkspaceSidebarCollapsed()} />
+							<V2WorkspaceSidebar isCollapsed={isWorkspaceSidebarCollapsed()} />
 						) : (
 							<WorkspaceSidebar
 								isCollapsed={isWorkspaceSidebarCollapsed()}

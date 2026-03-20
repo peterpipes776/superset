@@ -26,10 +26,12 @@ import { createSettingsRouter } from "./settings";
 import { createTerminalRouter } from "./terminal";
 import { createUiStateRouter } from "./ui-state";
 import { createWindowRouter } from "./window";
+import { createArchOneRouter } from "./arch-one";
 import { createWorkspacesRouter } from "./workspaces";
 
 export const createAppRouter = (getWindow: () => BrowserWindow | null) => {
 	return router({
+		archOne: createArchOneRouter(),
 		chatRuntimeService: createChatRuntimeServiceRouter(),
 		chatService: createChatServiceRouter(),
 		analytics: createAnalyticsRouter(),
