@@ -4,9 +4,11 @@ import { cn } from "@superset/ui/utils";
 import { useParams } from "@tanstack/react-router";
 import { useCallback } from "react";
 import {
+	LuActivity,
 	LuExpand,
 	LuFile,
 	LuGitCompareArrows,
+	LuRadar,
 	LuShrink,
 	LuX,
 } from "react-icons/lu";
@@ -21,8 +23,10 @@ import { useTabsStore } from "renderer/stores/tabs/store";
 import { toAbsoluteWorkspacePath } from "shared/absolute-paths";
 import type { ChangeCategory, ChangedFile } from "shared/changes-types";
 import { useScrollContext } from "../ChangesContent";
+import { ArchOneView } from "./ArchOneView/ArchOneView";
 import { ChangesView } from "./ChangesView";
 import { FilesView } from "./FilesView";
+import { PulseView } from "./PulseView/PulseView";
 
 function TabButton({
 	isActive,
@@ -184,6 +188,20 @@ export function RightSidebar() {
 						label="Files"
 						compact={compactTabs}
 					/>
+					<TabButton
+						isActive={rightSidebarTab === RightSidebarTab.ArchOne}
+						onClick={() => setRightSidebarTab(RightSidebarTab.ArchOne)}
+						icon={<LuRadar className="size-3.5" />}
+						label="Arch One"
+						compact={compactTabs}
+					/>
+					<TabButton
+						isActive={rightSidebarTab === RightSidebarTab.Pulse}
+						onClick={() => setRightSidebarTab(RightSidebarTab.Pulse)}
+						icon={<LuActivity className="size-3.5" />}
+						label="Pulse"
+						compact={compactTabs}
+					/>
 				</div>
 				<div className="flex-1" />
 				<div className="flex items-center h-10 pr-2 gap-0.5">
@@ -246,12 +264,30 @@ export function RightSidebar() {
 			)}
 			<div
 				className={
-					rightSidebarTab === RightSidebarTab.Changes && showChangesTab
-						? "hidden"
-						: "flex-1 min-h-0 flex flex-col overflow-hidden"
+					rightSidebarTab === RightSidebarTab.Files
+						? "flex-1 min-h-0 flex flex-col overflow-hidden"
+						: "hidden"
 				}
 			>
 				<FilesView />
+			</div>
+			<div
+				className={
+					rightSidebarTab === RightSidebarTab.ArchOne
+						? "flex-1 min-h-0 flex flex-col overflow-hidden"
+						: "hidden"
+				}
+			>
+				<ArchOneView />
+			</div>
+			<div
+				className={
+					rightSidebarTab === RightSidebarTab.Pulse
+						? "flex-1 min-h-0 flex flex-col overflow-hidden"
+						: "hidden"
+				}
+			>
+				<PulseView />
 			</div>
 		</aside>
 	);
