@@ -422,10 +422,19 @@ async function getGreptileScore(worktreePath: string): Promise<GreptileScore> {
 			// non-critical — prompt will use {owner}/{repo} placeholders
 		}
 
-		// Get latest review from greptile-apps[bot]
+		// Extract "Prompt To Fix All With AI" from the PR body (Greptile appends it to the PR description)
 		let latestReviewId: number | null = null;
 		let latestReviewSubmittedAt: string | null = null;
 		let reviewContent: string | null = null;
+
+		const fixAllMatch = pr.body?.match(
+			/<details>\s*<summary>\s*Prompt To Fix All With AI\s*<\/summary>\s*`{3,5}(?:markdown)?\n?([\s\S]*?)`{3,5}\s*<\/details>/i,
+		);
+		if (fixAllMatch) {
+			reviewContent = fixAllMatch[1].trim().slice(0, 15000);
+		}
+
+		// Get latest review ID + submitted_at from greptile-apps[bot] (for change detection / polling)
 		try {
 			const { stdout: reviewsJson } = await execAsync(
 				`gh api repos/{owner}/{repo}/pulls/${pr.number}/reviews --jq '[.[] | select(.user.login == "greptile-apps[bot]")] | last | {id, submitted_at}' 2>/dev/null`,
@@ -439,48 +448,42 @@ async function getGreptileScore(worktreePath: string): Promise<GreptileScore> {
 				latestReviewId = reviewMeta.id;
 				latestReviewSubmittedAt = reviewMeta.submitted_at ?? null;
 			}
-
-			// Extract "Prompt To Fix With AI" from inline review comments
-			const { stdout: commentsJson } = await execAsync(
-				`gh api repos/{owner}/{repo}/pulls/${pr.number}/comments --jq '[.[] | select(.user.login == "greptile-apps[bot]") | {path, line, body}]' 2>/dev/null`,
-				{ cwd: worktreePath, timeout: 15_000 },
-			);
-			const comments = JSON.parse(
-				commentsJson.trim() || "[]",
-			) as {
-				path: string | null;
-				line: number | null;
-				body: string;
-			}[];
-
-			// Greptile wraps fix prompts in: <details><summary>Prompt To Fix With AI</summary> `````markdown ... `````
-			const promptRegex =
-				/Prompt To Fix (?:All )?With AI<\/summary>\s*\n*\s*`{3,5}(?:markdown)?\n?([\s\S]*?)`{3,5}/i;
-			const prompts: string[] = [];
-			for (const c of comments) {
-				const match = promptRegex.exec(c.body);
-				if (match) {
-					prompts.push(match[1].trim());
-				}
-			}
-			if (prompts.length > 0) {
-				reviewContent = prompts.join("\n\n---\n\n").slice(0, 15000);
-			}
-
-			// Fall back to full comment bodies if no fix prompts found
-			if (!reviewContent && comments.length > 0) {
-				reviewContent = comments
-					.map((c) => {
-						const loc = c.path
-							? `### ${c.path}${c.line ? ` (line ${c.line})` : ""}`
-							: "### (general comment)";
-						return `${loc}\n${c.body}`;
-					})
-					.join("\n\n")
-					.slice(0, 15000);
-			}
 		} catch {
 			// non-critical
+		}
+
+		// Fall back: extract individual "Prompt To Fix With AI" from inline review comments
+		if (!reviewContent) {
+			try {
+				const { stdout: commentsJson } = await execAsync(
+					`gh api repos/{owner}/{repo}/pulls/${pr.number}/comments --jq '[.[] | select(.user.login == "greptile-apps[bot]") | {path, line, body}]' 2>/dev/null`,
+					{ cwd: worktreePath, timeout: 15_000 },
+				);
+				const comments = JSON.parse(
+					commentsJson.trim() || "[]",
+				) as {
+					path: string | null;
+					line: number | null;
+					body: string;
+				}[];
+
+				const promptRegex =
+					/Prompt To Fix (?:All )?With AI<\/summary>\s*\n*\s*`{3,5}(?:markdown)?\n?([\s\S]*?)`{3,5}/i;
+				const prompts: string[] = [];
+				for (const c of comments) {
+					const match = promptRegex.exec(c.body);
+					if (match) {
+						prompts.push(match[1].trim());
+					}
+				}
+				if (prompts.length > 0) {
+					reviewContent = prompts
+						.join("\n\n---\n\n")
+						.slice(0, 15000);
+				}
+			} catch {
+				// non-critical
+			}
 		}
 
 		// Also try Greptile section in PR body as secondary source
