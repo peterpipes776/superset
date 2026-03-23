@@ -5,6 +5,7 @@ import { cn } from "@superset/ui/utils";
 import { useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HiMiniXMark } from "react-icons/hi2";
+import { LuLoader } from "react-icons/lu";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useWorkspaceDeleteHandler } from "renderer/react-query/workspaces";
 import { navigateToWorkspace } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
@@ -153,6 +154,27 @@ export function WorkspaceListItem({
 				refetchInterval: hasHovered ? GITHUB_STATUS_STALE_TIME : false,
 			},
 		);
+
+	// Greptile score + fix status
+	const { data: greptileData } =
+		electronTrpc.archOne.getGreptileScore.useQuery(
+			{ worktreePath },
+			{
+				enabled: hasHovered && type === "worktree" && !!worktreePath,
+				staleTime: 30_000,
+				refetchInterval: 30_000,
+			},
+		);
+	const { data: fixStatus } = electronTrpc.archOne.getFixStatus.useQuery(
+		{ worktreePath },
+		{
+			enabled: type === "worktree" && !!worktreePath,
+			refetchInterval: 3_000,
+		},
+	);
+	const isFixing = fixStatus?.phase === "fixing";
+	const isWaitingReview = fixStatus?.phase === "waiting-for-review";
+	const greptileScore = greptileData?.score;
 
 	useBranchSyncInvalidation({
 		gitBranch: localChanges?.branch,
@@ -412,21 +434,46 @@ export function WorkspaceListItem({
 							</div>
 						</div>
 
-						{(showBranchSubtitle || pr) && (
+						{(showBranchSubtitle || pr || greptileScore != null || isFixing || isWaitingReview) && (
 							<div className="flex items-center gap-2 text-[11px] w-full">
 								{showBranchSubtitle && (
 									<span className="text-muted-foreground/60 truncate font-mono leading-tight">
 										{branch}
 									</span>
 								)}
-								{pr && (
-									<WorkspaceStatusBadge
-										state={pr.state}
-										prNumber={pr.number}
-										prUrl={pr.url}
-										className="ml-auto"
-									/>
-								)}
+								<div className="flex items-center gap-1.5 ml-auto shrink-0">
+									{(isFixing || isWaitingReview) && (
+										<Tooltip delayDuration={300}>
+											<TooltipTrigger asChild>
+												<span className={cn("inline-flex items-center", isFixing ? "text-blue-400" : "text-yellow-400")}>
+													<LuLoader className="size-2.5 animate-spin" />
+												</span>
+											</TooltipTrigger>
+											<TooltipContent side="right" sideOffset={4}>
+												{isFixing ? `Claude fixing (${fixStatus?.iteration}/${fixStatus?.maxIterations})` : "Waiting for Greptile re-review"}
+											</TooltipContent>
+										</Tooltip>
+									)}
+									{greptileScore !== null && greptileScore !== undefined && !isFixing && !isWaitingReview && (
+										<Tooltip delayDuration={300}>
+											<TooltipTrigger asChild>
+												<span className={cn("text-[10px] font-bold", greptileScore >= 4 ? "text-green-500" : greptileScore >= 3 ? "text-yellow-500" : "text-red-500")}>
+													{greptileScore}/5
+												</span>
+											</TooltipTrigger>
+											<TooltipContent side="right" sideOffset={4}>
+												Greptile confidence score
+											</TooltipContent>
+										</Tooltip>
+									)}
+									{pr && (
+										<WorkspaceStatusBadge
+											state={pr.state}
+											prNumber={pr.number}
+											prUrl={pr.url}
+										/>
+									)}
+								</div>
 							</div>
 						)}
 					</div>

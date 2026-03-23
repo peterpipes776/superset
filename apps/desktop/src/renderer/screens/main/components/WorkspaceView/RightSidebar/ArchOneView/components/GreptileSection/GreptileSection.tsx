@@ -18,6 +18,7 @@ interface GreptileData {
 	maxScore: number;
 	summary: string | null;
 	issues: string[];
+	reviewContent: string | null;
 	prNumber: number | null;
 	prTitle: string | null;
 	prUrl: string | null;
@@ -156,6 +157,7 @@ export function GreptileSection({
 	logLines,
 }: GreptileSectionProps) {
 	const [collapsed, setCollapsed] = useState(false);
+	const [promptExpanded, setPromptExpanded] = useState(false);
 
 	const isFixActive =
 		fixLoop.phase === "fixing" || fixLoop.phase === "waiting-for-review";
@@ -335,6 +337,29 @@ export function GreptileSection({
 										</li>
 									))}
 								</ul>
+							)}
+
+							{/* Prompt To Fix All */}
+							{data.reviewContent && (
+								<div className="border border-border rounded overflow-hidden">
+									<button
+										type="button"
+										onClick={() => setPromptExpanded(!promptExpanded)}
+										className="flex w-full items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent/30 cursor-pointer transition-colors"
+									>
+										{promptExpanded ? (
+											<LuChevronDown className="size-3 shrink-0" />
+										) : (
+											<LuChevronRight className="size-3 shrink-0" />
+										)}
+										Prompt To Fix All With AI
+									</button>
+									{promptExpanded && (
+										<pre className="px-2 py-2 text-[11px] font-mono bg-muted/30 overflow-auto max-h-64 whitespace-pre-wrap break-words border-t border-border">
+											{data.reviewContent}
+										</pre>
+									)}
+								</div>
 							)}
 
 							{/* Actions */}
