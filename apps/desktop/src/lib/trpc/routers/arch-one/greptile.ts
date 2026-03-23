@@ -250,45 +250,45 @@ You MUST run these slash commands as part of your workflow:
 
 	let prompt: string;
 	if (reviewContent && prNumber) {
-		prompt = `Fix Greptile code review issues on PR #${prNumber}. Iteration ${iteration}/${MAX_FIX_ITERATIONS}, current score: ${score}/5.
+		prompt = `Fix code review issues on PR #${prNumber}. Iteration ${iteration}/${MAX_FIX_ITERATIONS}, current score: ${score}/5.
 
-## Review Comments
+## AI Agent Fix Instructions
 ${reviewContent}
 
 ## Steps
 1. Read each file mentioned above at the specified line
 2. For each issue, determine if it's a real bug or a false positive:
    - **Real bug**: Fix the code
-   - **False positive**: Add a brief code comment at the flagged location explaining why the concern doesn't apply (e.g. \`// CAS-based refresh handles race condition — see line 95\`). This helps Greptile learn and prevents it from re-flagging the same non-issue.
-3. Run \`/review\` to verify your changes don't introduce new problems. THIS IS MANDATORY — always run it even if all issues were false positives.
-4. Stage changed files, commit with message: "fix: address greptile review feedback"
+   - **False positive**: Add a brief code comment at the flagged location explaining why the concern doesn't apply (e.g. \`// CAS-based refresh handles race condition — see line 95\`)
+3. Run \`/review\` to verify your changes don't introduce new problems. THIS IS MANDATORY.
+4. Stage changed files, commit with message: "fix: address code review feedback"
 5. Push to the current branch
 6. Resolve addressed review threads on GitHub:
    - Get thread IDs: gh api graphql -f query='{ repository(owner: "${owner ?? "{owner}"}", name: "${repo ?? "{repo}"}") { pullRequest(number: ${prNumber}) { reviewThreads(first: 100) { nodes { id isResolved path comments(first: 1) { nodes { body } } } } } } }'
    - For each unresolved thread you fixed, resolve it: gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "THREAD_ID"}) { thread { isResolved } } }'
 
-IMPORTANT: You must ALWAYS commit and push, even if all issues are false positives. The code comments explaining false positives are valuable changes that help the reviewer on subsequent passes.
+IMPORTANT: You must ALWAYS commit and push, even if all issues are false positives.
 
 ## If the comments above are incomplete
 Fetch full review comments yourself:
-  gh api repos/${ownerRepo}/pulls/${prNumber}/reviews --jq '[.[] | select(.user.login == "greptile-apps[bot]")] | last | .id'
-  gh api repos/${ownerRepo}/pulls/${prNumber}/reviews/REVIEW_ID/comments --jq '.[] | {path, line, body}'
+  gh api repos/${ownerRepo}/pulls/${prNumber}/comments --jq '[.[] | select(.user.login == "greptile-apps[bot]") | {path, line, body}]'
 ${gstackSection}`;
 	} else if (prNumber) {
-		prompt = `Check the latest Greptile review comments on PR #${prNumber} and fix all issues, then commit and push. Iteration ${iteration}/${MAX_FIX_ITERATIONS}, current score: ${score}/5.
+		prompt = `Check the latest code review on PR #${prNumber} and fix all issues, then commit and push. Iteration ${iteration}/${MAX_FIX_ITERATIONS}, current score: ${score}/5.
 
 Fetch review comments:
-  gh api repos/${ownerRepo}/pulls/${prNumber}/reviews --jq '[.[] | select(.user.login == "greptile-apps[bot]")] | last | .id'
-  gh api repos/${ownerRepo}/pulls/${prNumber}/reviews/REVIEW_ID/comments --jq '.[] | {path, line, body}'
+  gh api repos/${ownerRepo}/pulls/${prNumber}/comments --jq '[.[] | select(.user.login == "greptile-apps[bot]") | {path, line, body}]'
 
-For each issue: fix real bugs, and for false positives add a brief code comment explaining why the concern doesn't apply. Always commit and push — even false-positive annotations are valuable.
+Look for "Prompt To Fix With AI" sections in the comments — they contain structured fix instructions.
+
+For each issue: fix real bugs, and for false positives add a brief code comment explaining why. Always commit and push.
 
 Then run \`/review\` (MANDATORY) to verify changes.
 ${gstackSection}`;
 	} else {
-		prompt = `Check the latest Greptile review comments on the current PR and fix all issues, then commit and push.
+		prompt = `Check the latest code review on the current PR and fix all issues, then commit and push.
 
-For each issue: fix real bugs, and for false positives add a brief code comment explaining why the concern doesn't apply. Always commit and push.
+For each issue: fix real bugs, and for false positives add a brief code comment explaining why. Always commit and push.
 
 Then run \`/review\` (MANDATORY) to verify changes.
 ${gstackSection}`;
@@ -422,7 +422,7 @@ async function getGreptileScore(worktreePath: string): Promise<GreptileScore> {
 			// non-critical — prompt will use {owner}/{repo} placeholders
 		}
 
-		// Get latest review ID + submitted_at from greptile-apps[bot] (used to detect new reviews)
+		// Get latest review from greptile-apps[bot]
 		let latestReviewId: number | null = null;
 		let latestReviewSubmittedAt: string | null = null;
 		let reviewContent: string | null = null;
@@ -438,16 +438,37 @@ async function getGreptileScore(worktreePath: string): Promise<GreptileScore> {
 			if (reviewMeta?.id) {
 				latestReviewId = reviewMeta.id;
 				latestReviewSubmittedAt = reviewMeta.submitted_at ?? null;
-				// Get review comments with file/line context (not just body)
-				const { stdout: commentsJson } = await execAsync(
-					`gh api repos/{owner}/{repo}/pulls/${pr.number}/reviews/${latestReviewId}/comments --jq '[.[] | {path, line, body}]' 2>/dev/null`,
-					{ cwd: worktreePath, timeout: 15_000 },
-				);
-				const comments = JSON.parse(commentsJson.trim() || "[]") as {
-					path: string | null;
-					line: number | null;
-					body: string;
-				}[];
+			}
+
+			// Extract "Prompt To Fix With AI" from inline review comments
+			const { stdout: commentsJson } = await execAsync(
+				`gh api repos/{owner}/{repo}/pulls/${pr.number}/comments --jq '[.[] | select(.user.login == "greptile-apps[bot]") | {path, line, body}]' 2>/dev/null`,
+				{ cwd: worktreePath, timeout: 15_000 },
+			);
+			const comments = JSON.parse(
+				commentsJson.trim() || "[]",
+			) as {
+				path: string | null;
+				line: number | null;
+				body: string;
+			}[];
+
+			// Greptile wraps fix prompts in: <details><summary>Prompt To Fix With AI</summary> `````markdown ... `````
+			const promptRegex =
+				/Prompt To Fix (?:All )?With AI<\/summary>\s*\n*\s*`{3,5}(?:markdown)?\n?([\s\S]*?)`{3,5}/i;
+			const prompts: string[] = [];
+			for (const c of comments) {
+				const match = promptRegex.exec(c.body);
+				if (match) {
+					prompts.push(match[1].trim());
+				}
+			}
+			if (prompts.length > 0) {
+				reviewContent = prompts.join("\n\n---\n\n").slice(0, 15000);
+			}
+
+			// Fall back to full comment bodies if no fix prompts found
+			if (!reviewContent && comments.length > 0) {
 				reviewContent = comments
 					.map((c) => {
 						const loc = c.path
@@ -462,70 +483,68 @@ async function getGreptileScore(worktreePath: string): Promise<GreptileScore> {
 			// non-critical
 		}
 
-		// Extract the Greptile section from the PR body
+		// Also try Greptile section in PR body as secondary source
 		const greptileMatch = pr.body?.match(
 			/<!-- greptile_comment -->([\s\S]*?)<!-- \/greptile_comment -->/,
 		);
 
-		if (!greptileMatch) {
+		let score: number | null = null;
+		let summary: string | null = null;
+		const issues: string[] = [];
+
+		if (greptileMatch) {
+			const greptileSection = greptileMatch[1];
+
+			const scoreMatch = greptileSection.match(
+				/Confidence\s+Score:\s*(\d)\s*\/\s*5/i,
+			);
+			score = scoreMatch
+				? Number.parseInt(scoreMatch[1], 10)
+				: null;
+
+			const summaryMatch = greptileSection.match(
+				/<h3>Greptile Summary<\/h3>\s*([\s\S]*?)(?=<h3>)/,
+			);
+			if (summaryMatch) {
+				summary = summaryMatch[1]
+					.replace(/<[^>]+>/g, "")
+					.split("\n")
+					.map((l) => l.trim())
+					.filter((l) => l.length > 0)
+					.slice(0, 3)
+					.join(" ")
+					.slice(0, 300);
+			}
+
+			const issuesMatch = greptileSection.match(
+				/Confidence\s+Score:\s*\d\s*\/\s*5<\/h3>\s*([\s\S]*?)(?=<h3>Important\s+Files|<h3>Greptile\s+Summary|$)/i,
+			);
+			if (issuesMatch) {
+				const raw = issuesMatch[1]
+					.replace(/<[^>]+>/g, "")
+					.split("\n")
+					.map((l) => l.trim())
+					.filter((l) => l.length > 0);
+				for (const line of raw) {
+					if (issues.length < 10) {
+						issues.push(line.slice(0, 500));
+					}
+				}
+			}
+		}
+
+		if (!reviewContent && !greptileMatch && !latestReviewId) {
 			return {
 				...empty,
 				prNumber: pr.number,
 				prTitle: pr.title,
 				prUrl: pr.url,
-				latestReviewId,
-				latestReviewSubmittedAt,
 				reviewing: false,
-				error: "No Greptile review on this PR yet",
+				error: "No code review found on this PR yet",
 			};
 		}
 
-		const greptileSection = greptileMatch[1];
-
-		// Extract score
-		const scoreMatch = greptileSection.match(
-			/Confidence\s+Score:\s*(\d)\s*\/\s*5/i,
-		);
-		const score = scoreMatch ? Number.parseInt(scoreMatch[1], 10) : null;
-
-		// Extract summary
-		let summary: string | null = null;
-		const summaryMatch = greptileSection.match(
-			/<h3>Greptile Summary<\/h3>\s*([\s\S]*?)(?=<h3>)/,
-		);
-		if (summaryMatch) {
-			summary = summaryMatch[1]
-				.replace(/<[^>]+>/g, "")
-				.split("\n")
-				.map((l) => l.trim())
-				.filter((l) => l.length > 0)
-				.slice(0, 3)
-				.join(" ")
-				.slice(0, 300);
-		}
-
-		// Extract issues — bullet points between Confidence Score and Important Files
-		const issuesMatch = greptileSection.match(
-			/Confidence\s+Score:\s*\d\s*\/\s*5<\/h3>\s*([\s\S]*?)(?=<h3>Important\s+Files|<h3>Greptile\s+Summary|$)/i,
-		);
-		const issues: string[] = [];
-		if (issuesMatch) {
-			const raw = issuesMatch[1]
-				.replace(/<[^>]+>/g, "")
-				.split("\n")
-				.map((l) => l.trim())
-				.filter((l) => l.length > 0);
-			for (const line of raw) {
-				if (issues.length < 10) {
-					issues.push(line.slice(0, 500));
-				}
-			}
-		}
-
-		// Determine reviewing state: greptile section exists but no score yet.
-		// Previously used fragile keyword matching ("reviewing"/"in progress"/"analyzing")
-		// which false-positived on completed reviews mentioning those words in summaries.
-		const reviewing = score === null;
+		const reviewing = !reviewContent && score === null;
 
 		return {
 			score,
