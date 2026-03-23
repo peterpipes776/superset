@@ -175,9 +175,17 @@ function startReviewPolling(entry: FixLoopEntry) {
 			const sameReview =
 				data.latestReviewId === entry.reviewIdAtFixStart &&
 				data.latestReviewSubmittedAt === entry.reviewSubmittedAtFixStart;
-			if (sameReview) return;
 
-			// New review — check the score
+			// Even if the review ID changed, the score in the PR body may be stale
+			// (Greptile updates PR body asynchronously). If the score hasn't changed
+			// from what triggered this fix iteration, Greptile hasn't finished yet.
+			const scoreUnchanged =
+				data.score !== null &&
+				data.score === entry.lastTriggeredScore;
+
+			if (sameReview || scoreUnchanged) return;
+
+			// New review with updated score — check it
 			if (data.score === null || data.score === undefined) return;
 
 			// Score is good — done!
